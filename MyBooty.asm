@@ -12,6 +12,63 @@
 * ===========================================================================
 * ===========================================================================
 *
+*	MyBooty Version 1.1
+*	12-Apr-2011
+*	By Sophie Dexter
+* 	With help and lots of information from Dilemma
+*	Also using bits and pieces from General Failure, Patrik Servin and
+*	J.K.Nillson whose scripts I borrowed heavily from :-)
+*
+*	BUG FIXES
+*	FLASH_FILL_WITH_ZERO
+*	Moved the code that resets the watchdog so that it is reset once
+*	for each byte. Previously the watchdog was reset every time a zero
+*	flash pulse was done, but not if the byte was already a zero. This
+*	could mean that the watchdog could run out of time if there are a
+*	lot of consecutive zeroes in the original BIN file causing the ECU
+*	to reset and CAN erasing to fail! Erasing 20Fxxx FLASH chips should
+*	be slightly faster now because there are typically a few programming
+*	pulses needed to change each byte to a zero and previosuly the
+*	watchdog may have been reset maybe a million times whilst programming
+*	the zeroes whereas now it is reset (only) 262,144 times.
+*	Corrected various spellings :o)
+*
+*	ADDITIONS
+*	Added J.K.Nilsson to the credits (apologies for inadvertently omiting
+*	you previously)
+*
+*	REMOVED
+*	;-)
+*	Unfortunately my cheeky nametag caused a little dis-pLeisure
+*	10_MS_DELAY
+*	It was only used twice and since it's not necessary to reset the
+*	watchdog as frequently as first though I have removed the sub-routine
+*	and put it inline where needed. Consequently MyBooty is slightly
+*	smaller :-)
+*
+*	IMPROVEMENTS
+*	BOOTLOADER_LOOP
+*	Changed the order that commands are checked so that most common
+*	commands are checked first. Consequently MyBooty is slightly
+*	faster :-)
+*	CHECKSUM
+*	Smaller method of working out OFFSET and Code_End addresses. Faster
+*	calculation of checksum relying on there always being an even number
+*	of bytes to calculate the checksum over. Consequently MyBooty is
+*	slightly faster and smaller :-)
+*	PREPARATION
+*	Simpler frequency setting, MyBooty is slightly smaller as a result :-)
+*	FLASH_29F
+*	Removed Watchdog resets because not longer needed. Consequently MyBooty
+*	is slightly faster and smaller :-)
+*	SEND_CAN & WAIT_CAN
+*	Simpler instruction type used to fill/empty buffers. I had hoped
+*	this would speed things up a little, it doesn't but at least MyBooty
+*	is slightly smaller :-)
+*
+* ===========================================================================
+* ===========================================================================
+*
 *	MyBooty Version 1
 *	7-May-2010
 *	By Sophie Dexter
@@ -115,7 +172,7 @@
 * If something is used often then it is quicker and smaller to store that
 * value in a register. E.g. the watchdog has to be reset often so I have
 * reserved a6 for the watchdog address and d6 and d7 for the reset values for
-* the watchdog (which also conveniently double up for part of the AMD 29C010
+* the watchdog (which also conveniently double up for part of the AMD 29F010
 * programming sequences. a5 is also reserved for the address of the start of
 * FLASH
 *
@@ -125,8 +182,8 @@
 * If you want to modify this code be aware that I use these registers
 * and expect them to always have the correct value in them.
 *
-*	d6 - 0x5555 used for resetting the watchdog - also for AMD 29C commands
-*	d7 - 0xAAAA used for resetting the watchdog - also for AMD 29C commands
+*	d6 - 0x5555 used for resetting the watchdog - also for AMD 29F commands
+*	d7 - 0xAAAA used for resetting the watchdog - also for AMD 29F commands
 *
 *	a5 - Flash_Start_Address either 0x40000 for T5.5 or 0x60000 for T5.2
 *	a6 - Watchdog SWSR in SIM address
@@ -309,24 +366,27 @@
 
 * Some 'equates' used in the program code:
 
-Watchdog_Address	EQU $FFFA26
-CAN_Address1		EQU $F007FF
-CAN_Address2		EQU $F00800
+SYNCR			EQU	$FFFA04		* Frequency Settings
+SYPCR			EQU	$FFFA21		* Watchdog Settings
+SWSR			EQU	$FFFA27		* Watchdog service register(B)
+Watchdog_Address	EQU	$FFFA26		* Watchdog service register(W)
+CAN_Address1		EQU	$F007FF
+CAN_Address2		EQU	$F00800
 Last_Address_Of_T5	EQU	$7FFFF
 Intel_Make_Id		EQU	$89
-AMD_Make_Id			EQU $01
-CSI_Make_Id			EQU $31
-Atmel_Make_Id		EQU $1F
+AMD_Make_Id		EQU	$01
+CSI_Make_Id		EQU	$31
+Atmel_Make_Id		EQU	$1F
 Intel_28F512_Id		EQU	$B8		* Also CSI
-Intel_28F010_Id		EQU $B4		* Also CSI
-AMD_28F512_Id		EQU $25
+Intel_28F010_Id		EQU	$B4		* Also CSI
+AMD_28F512_Id		EQU	$25
 AMD_28F010_Id		EQU	$A7
 AMD_29F010_Id		EQU	$20
 Atmel_29C512_Id		EQU	$5D
 Atmel_29C010_Id		EQU	$D5
-Count_10ms			EQU	22000	* 22,001 loops x 0.48 = 10.56 ms
-Count_10us			EQU	21		* 22 loops x 0.48 = 10.56 us
-Count_6us			EQU 12		* 13 loops x 0.48 = 6.24 us
+Count_10ms		EQU	22000		* 22,001 loops x 0.48 = 10.56 ms
+Count_10us		EQU	21		* 22 loops x 0.48 = 10.56 us
+Count_6us		EQU	12		* 13 loops x 0.48 = 6.24 us
 
 	org 	$5000
 
@@ -339,8 +399,7 @@ Count_6us			EQU 12		* 13 loops x 0.48 = 6.24 us
 My_Booty:
 		jsr		(Preparation).w
 		jsr		(Bootloader_Loop).w
-		addq.l	#4,a5		* FLASH Start Address
-		jmp		(a5)		* Restart ECU by jumping to start vector address
+		jmp		4(a5)		* Restart ECU by jumping to start vector address
 
 * ===========================================================================
 * =============== End of My_Booty ===========================================
@@ -358,14 +417,11 @@ Preparation:
 * The main reason for doing this is to make the delay loops the same
 * so that 16 and 20 Mhz ECUs will work with the same values
 
-		andi.b	#$3F,($FFFA04).l
-		ori.b	#$3F,($FFFA04).l	* multiply by 256 = 8.388 MHz
+		movea.l	#SYNCR,a0
+		move.b	#$7F,(a0)+		* multiply by 512 = 16.78 MHz
 Synthesiser_Lock_Flag:
-		move.b	($FFFA05).l,d0
-		lsr.b	#3,d0
-		andi.b	#1,d0
+		btst.b	#3,(a0)			* test VCO lock bit
 		beq.b	Synthesiser_Lock_Flag
-		ori.b	#$40,($FFFA04).l	* multiply by 512 = 16.78 MHz
 
 * Setup chip select modes
 		
@@ -423,11 +479,14 @@ Bootloader_Loop:
 		move.w	#$0808,(a1)			* CanTxBuffer6-7
 		subq.l	#5,a1				* a1 points to CanTxBuffer1 again 'code'
 * ---------------------------------------------------------------------------
-		cmpi.b	#$A5,d0				* A5 command - address and count of Bytes
-		beq.w	A5_Command
+		cmpi.b	#$C7,d0				* C7 command - Read 6 bytes of FLASH
+		beq.w	C7_Command
 * ---------------------------------------------------------------------------
 		cmpi.b	#$7F,d0				* 0x00-0x7F upto 7 bytes of FLASH data
-		bls.w	Data_Command		* bls - less than or equal to 0x7F
+		bls.w	Data_Command			* bls - less than or equal to 0x7F
+* ---------------------------------------------------------------------------
+		cmpi.b	#$A5,d0				* A5 command - address and count of Bytes
+		beq.w	A5_Command
 * ---------------------------------------------------------------------------
 		cmpi.b	#$C0,d0				* C0 command - erase flash chips
 		beq.w	C0_Command
@@ -437,9 +496,6 @@ Bootloader_Loop:
 * ---------------------------------------------------------------------------
 		cmpi.b	#$C3,d0				* C3 command - Get last address of FLASH
 		beq.w	C3_Command
-* ---------------------------------------------------------------------------
-		cmpi.b	#$C7,d0				* C7 command - Read 6 bytes of FLASH
-		beq.w	C7_Command
 * ---------------------------------------------------------------------------
 		cmpi.b	#$C8,d0				* C8 command - Calculate FLASH Checksum
 		beq.w	C8_Command
@@ -458,7 +514,7 @@ Bootloader_Loop:
 
 Send_CAN_Response:
 		jsr		(Send_A_CAN_Message).w
-		cmpi.b	#$C2,(a1)			* a1 = CanTxBuffer0, $C2 - exit
+		cmpi.b	#$C2,(CanTxBuffer).w		* CanTxBuffer0, $C2 - exit
 		bne.b	Bootloader_Loop		* Then return to start
 		rts		* else,	we were	signalled to quit the main loop	by C2 command
 * ===========================================================================
@@ -475,8 +531,9 @@ A5_Command:
 		lsl.l	#8,d0		* Remove A5 code by shifting left 8 times, d0 now
 *							  contains most of the FLASH address
 		or.b	(a0)+,d0				* Get low byte of FLASH address
-		movea.l	d0,a2					* FLASH address now in a2 register	
-		move.l	a2,(FlashAddress).w		* Store a copy of the FLASH address
+*		movea.l	d0,a2					* FLASH address now in a2 register	
+*		move.l	a2,(FlashAddress).w		* Store a copy of the FLASH address
+		move.l	d0,(FlashAddress).w		* Store a copy of the FLASH address
 		move.b	(a0),(FlashLength).w	* FLASH bytes to follow
 
 		clr.b	(a1)		* 0 - OK, CanTxBuffer1
@@ -640,8 +697,8 @@ Check_CAN_Loop:
 		move.b	#2,(a2)				* 
 		tst.b	(a3)				* dummy read of CAN chip?
 * ---------------------------------------------------------------------------
-Wait_For_Read_Ready:
 		move.b	#$12,(a2)			* 
+Wait_For_Read_Ready:
 		btst.b	#0,(a3)
 		beq.b	Wait_For_Read_Ready
 * ---------------------------------------------------------------------------
@@ -664,13 +721,13 @@ Read_CAN_Message:
 * ---------------------------------------------------------------------------
 CAN_Read_Bytes_Loop:
 		move.b	d0,(a2)				* 
-		move.b	(a3),-$14(a0,d0.w)
 		addq.b	#1,d0
+		move.b	(a3),(a0)+
 		cmpi.b	#$1B,d0				* 0x14 + 0x07 = 0x1B
 		bls.b	CAN_Read_Bytes_Loop
 * ---------------------------------------------------------------------------
-Wait_For_Read_Done:
 		move.b	#$12,(a2)			* 
+Wait_For_Read_Done:
 		btst.b	#0,(a3)
 		beq.b	Wait_For_Read_Done
 * ---------------------------------------------------------------------------
@@ -715,8 +772,8 @@ Send_A_CAN_Message:
 		move.b	#6,(a2)				* 
 		clr.b	(a3)				* 
 * ---------------------------------------------------------------------------
-Wait_For_Ready_Send:
 		move.b	#7,(a2)				* 
+Wait_For_Ready_Send:
 		btst.b	#0,(a3)
 		beq.b	Wait_For_Ready_Send
 * ---------------------------------------------------------------------------
@@ -724,8 +781,8 @@ Wait_For_Ready_Send:
 * ---------------------------------------------------------------------------
 CAN_Send_Bytes_Loop:
 		move.b	d0,(a2)				* 
-		move.b	-$9(a1,d0.w),(a3)	* 
 		addq.b	#1,d0
+		move.b	(a1)+,(a3)	* 
 		cmpi.b	#$10,d0				* 0x09 + 0x07 = 0x10
 		bls.b	CAN_Send_Bytes_Loop
 * ---------------------------------------------------------------------------
@@ -737,222 +794,6 @@ CAN_Send_Bytes_Loop:
 		rts
 * ===========================================================================
 * =============== End of Send_A_CAN_Message =================================
-* ===========================================================================
-
-
-* =============== S U B	R O U T	I N E =======================================
-* ===========================================================================
-* =============== Flash_Programming =========================================
-* ===========================================================================
-*
-*
-*	d0 - used to return pass/fail (can also be used for anything temporarily)
-*	d1 - used for delay loop counters and testing which FLASH chip type
-*	d2 - used to store/countdown the number of bytes to program
-*	d3 - used to get the bytes for programming from the FLASH Write Buffer
-*	d4 - used to check the programmed byte
-*	d5 - used for programming retry counter
-*	d6 - 0x5555 used for resetting the watchdog (already there)
-*	d7 - 0xAAAA used for resetting the watchdog (already there)
-*
-*	a0
-*	a1
-*	a2
-*	a3 - is the address of the FLASH_Write_Buffer
-*	a4 - is the first FLASH address to program (add to d2)
-*	a5 - used for Flash_Start_Address (already there)
-*		 either 0x40000 for T5.5 or 0x60000 for T5.2
-*	a6 - Watchdog SWSR in SIM address (already there)
-*
-* ===========================================================================
-
-* ===========================================================================
-* =============== First work out what type of FLASH chips are fitted ========
-* ===========================================================================
-
-Flash_Programming:
-		movea.l	#FlashAddress,a3	* FLASH Write Buffer
-		movea.l	(a3),a4			* Where to start programming in FLASH
-		cmpa.l	a4,a5				* first, check for flash address range
-		bhi.w	Programming_Error
-		clr.l	d2
-		move.b	4(a3),d2				* Get number of bytes to program
-		move.b	(FLASH_Type).w,d1
-		cmpi.b	#$20,d1					* AMD 29F010 Device id
-		beq.w	Flash_29F
-		cmpi.b	#$D5,d1					* Atmel 29C010 Device id
-		beq.b	Flash_29C
-		cmpi.b	#$5D,d1					* Atmel 29C512 Device id
-		beq.b	Flash_29C
-		bra.b	Flash_28F				* Assume that they are 28F512/010
-
-		
-* ===========================================================================
-* =============== Program Atmel 29C010 FLASH chip types =====================
-* ===========================================================================
-*
-* dummy 'placeholder' code for Atmel - always 'fails'
-*
-* ===========================================================================
-	
-Flash_29C:
-		bra.w	Programming_Error	* Branch back to where Flash_Prog fails
-
-* ===========================================================================
-* =============== End of Program Atmel 29C010 FLASH chip types ==============
-* ===========================================================================
-
-
-* ===========================================================================
-* =============== Program 28F512/010 FLASH chip types =======================
-* ===========================================================================
-*
-*	d0 - used to get the bytes for programming from the FLASH Write Buffer
-*	d1 - used for delay loop counters and testing which FLASH chip type
-*	d2 - used to store/countdown the number of bytes to program
-*	d3 - used for 28F FLASH program command - 0x40
-*	d4 - used for 28F FLASH verify command - 0xC0
-*	d5 - used for programming retry counter
-*	d6 - 0x5555 used for resetting the watchdog (already there)
-*	d7 - 0xAAAA used for resetting the watchdog (already there)
-*
-*	a0
-*	a1
-*	a2
-*	a3 - is the address of the FLASH_Write_Buffer
-*	a4 - is the first FLASH address to program (add to d2)
-*	a5 - used for Flash_Start_Address (already there)
-*		 either 0x40000 for T5.5 or 0x60000 for T5.2
-*	a6 - Watchdog SWSR in SIM address (already there)
-*
-* note -1 (a4,d2.l) FLASHBuffer because using count of bytes in d2
-*
-* ===========================================================================
-
-Flash_28F:
-		move.b	#$40,d3					* FLASH program command
-		move.b	#$C0,d4					* FLASH verify command
-Flash_28F_Another:
-		move.b	4(a3,d2.l),d0			* Get byte to be programmed into d3
-		cmpi.b	#$FF,d0					* Check for FF (should already be FF)
-		beq.b	Already_0xFF			* Don't need to program 0xFF
-		moveq	#$19,d5					* 25 retries to	program
-* ---------------------------------------------------------------------------
-Flash_Program_Loop:
-		move.b	d3,-1(a4,d2.l)			* FLASH program command
-		move.b	d0,-1(a4,d2.l)			* Write	data to	flash address
-		moveq 	#Count_10us,d1
-Program_10us_Delay:
-		nop
-		dbeq	d1,Program_10us_Delay
-		move.b	d4,-1(a4,d2.l)			* FLASH verify command
-		moveq 	#Count_6us,d1
-Verify_6us_Delay:
-		nop
-		dbeq	d1,Verify_6us_Delay
-		cmp.b	-1(a4,d2.l),d0			* check that FLASH value is correct
-		bne.b	Byte_Not_Programmed
-* ---------------------------------------------------------------------------
-Already_0xFF:
-		subq.l	#1,d2					* Are we done yet?
-		bne.b	Flash_28F_Another
-		bra.b	Programming_Done
-* ---------------------------------------------------------------------------
-Byte_Not_Programmed:
-		subq.b	#1,d5					* 25 retries to	program
-		bne.b	Flash_Program_Loop		* Retry if some retries left		
-* ---------------------------------------------------------------------------
-Programming_Done:
-		clr.w	(a5)			* Put_FLASH_In_Read_Mode
-		tst.w	(a5)			* Only needed for AMD, does no harm for Intel
-		tst.b	d5				* Error if d5 = 0, - 25 attempts FAILED
-		beq.w	Programming_Error
-		bra.w	Programming_OK			* Go back to where Flash_Prog OK
-* ===========================================================================
-* =============== End of Program 28F512/010 FLASH chip types ================
-* ===========================================================================
-
-
-* ===========================================================================
-* =============== Program AMD 29F010 FLASH chip types =======================
-* ===========================================================================
-*
-*	d0 - used to select between FLASH chip1 and chip2
-*	d1 - Program FLASH Command
-*	d2 - count of number of bytes - add to -1(a4) to get address to program
-*	d3 - byte to program into FLASH
-*	d4 - used for checking that FLASH is programmed
-*	d5 - used to check for a programming timeout error 
-*	d6 - 0x5555 used for resetting the watchdog - also for AMD 29C commands
-*	d7 - 0xAAAA used for resetting the watchdog - also for AMD 29C commands
-*
-*	a3 - is the address of the FLASH_Write_Buffer
-*	a4 - is the first FLASH address to program (add to d2)
-*	a5 - used for Flash_Start_Address (already there)
-*	a6 - Watchdog SWSR in SIM address (already there)
-*
-*============================================================================
-
-Flash_29F:
-		move.b	#$A0,d1					* Program FLASH Command
-		move.l	a4,d0					* work out if chip 1 or 2...
-		add.l	d2,d0					* ...by adding address and byte count
-		and.l	#1,d0					* ...to see if odd or even 
-Flash_29F_Another:
-		bchg	#0,d0					* swap between chip 1 and 2 for each
-		move.b	4(a3,d2.l),d3			* get a byte to program
-		cmpi.b	#$FF,d3					* Check for FF (should already be FF)
-		beq.b	Flash_29F_OK			* Don't need to program 0xFF
-		move.b	d7,$5555*2(a5,d0.l)		*
-		move.b	d6,$2AAA*2(a5,d0.l)		*
-		move.b	d1,$5555*2(a5,d0.l)		* Program FLASH sequence
-		move.b	d3,-1(a4,d2.l)			* Write	data to	flash address
-		and.b	#$80,d3					* Isolate Bit 7 for testing
-* Reset_Software_Watchdog
-		move.w	d6,(a6)					* Write $5555 to SWSR in SIM
-		move.w	d7,(a6)					* Write $AAAA to SWSR in SIM
-Flash_29F_Verify:
-		move.b	-1(a4,d2.l),d4			* Read back from FLASH
-		move.b	d4,d5					* store a copy to test for timeout
-		and.b	#$80,d4
-		cmp.b	d3,d4					* Test to see if Bit 7 matches
-		beq.b	Flash_29F_OK
-		btst	#5,d5					* Test to see if timeout
-		beq.b	Flash_29F_Verify		* Not timed out so check again
-		move.b	-1(a4,d2.l),d4			* Read back from FLASH
-		and.b	#$80,d4
-		cmp.b	d3,d4					* Test to see if Bit 7 matches
-		beq.b	Flash_29F_OK
-		move.b	d7,$5555*2(a5,d0.l)		* Programming timed out if here
-		move.b	d6,$2AAA*2(a5,d0.l)		* Have to reset FLASH chip when...
-		move.b	#$F0,$5555*2(a5,d0.l)	* ...programming fails
-		bra.b	Programming_Error		* Go back to where Flash_Prog fails
-* ---------------------------------------------------------------------------
-Flash_29F_OK:
-		subq.l	#1,d2
-		bne.b	Flash_29F_Another		* OK so program another one
-*		bra.w	Programming_OK
-
-* ===========================================================================
-* =============== End of Program AMD 29F010 FLASH chip types ================
-* ===========================================================================
-
-
-* ===========================================================================
-*	d0 - used to return pass/fail
-* ===========================================================================
-
-Programming_OK:
-		clr.w	d0
-		bra.b	Programming_Return
-* ---------------------------------------------------------------------------
-Programming_Error:
-		moveq	#1,d0
-Programming_Return:
-		rts
-
-* ===========================================================================
-* =============== End of Flash_Programming ==================================
 * ===========================================================================
 
 
@@ -1110,13 +951,13 @@ Zero_Program_10us_Delay:
 Zero_Verify_6us_Delay:
 		nop
 		dbeq	d1,Zero_Verify_6us_Delay
-* Reset_Software_Watchdog
-		move.w	d6,(a6)				* Write $5555 to SWSR in SIM
-		move.w	d7,(a6)				* Write $AAAA to SWSR in SIM
 		tst.b	-1(a5,d2.l)			* Check if zero
 		bne.b	Zero_Not_Programmed
 * ---------------------------------------------------------------------------
 Already_Zero:
+* Reset_Software_Watchdog
+		move.w	d6,(a6)				* Write $5555 to SWSR in SIM
+		move.w	d7,(a6)				* Write $AAAA to SWSR in SIM
 		subq.l	#1,d2				* decrease address counter for next byte
 		bne.b	Program_A_Zero
 		bra.b	Zeroing_Done
@@ -1222,8 +1063,8 @@ Erasing_Done:
 *	d0 - used to select between FLASH chip1 and chip2
 *	d1 - used for delay loop timer
 *	d5 - used to check for a erasing ok or if there was a timeout error 
-*	d6 - 0x5555 used for resetting the watchdog - also for AMD 29C commands
-*	d7 - 0xAAAA used for resetting the watchdog - also for AMD 29C commands
+*	d6 - 0x5555 used for resetting the watchdog - also for AMD 29F commands
+*	d7 - 0xAAAA used for resetting the watchdog - also for AMD 29F commands
 *
 *	a5 - used for Flash_Start_Address (already there)
 *	a6 - Watchdog SWSR in SIM address
@@ -1258,10 +1099,10 @@ Erase_29F_Verify:
 Erase_29F_OK:
 		subq.l	#1,d0
 		beq.w	Erase_29F				* Erase Chip OK so see if next chip
-*		bra.w	Erase_OK				* Erase_OK :-)
+		bra.w	Erase_OK				* Erase_OK :-)
 
 * ===========================================================================
-* =============== End of Erase_AMD_29F ====================================
+* =============== End of Erase_AMD_29F ======================================
 * ===========================================================================
 
 
@@ -1270,25 +1111,230 @@ Erase_29F_OK:
 * ===========================================================================
 	
 Erase_OK:
-* Erase AMD_29F returns here if ersaed OK
-* ;-)
-		movea.l	#FlashAddress,a3	* FLASH Buffer
-		move.l	#$0007FE01,(a3)+
-		move.l	#$0F4A7573,(a3)+
-		move.l	#$7434704C,(a3)+
-		move.l	#$65697375,(a3)+
-		move.l	#$72653B29,(a3)
-		jsr		(Flash_Programming).w
-		clr.l	d0					* 0 means FLASH was erased
+* Erase AMD_29F returns here if erased OK
+		clr.l	d0			* 0 means FLASH was erased
 		bra.b	Erase_Return
 Erase_Failed:
 * Erase_AMD_29F returns here If Erase FAILED
-		moveq	#1,d0				* 1 means FAILED to erase FLASH
+		moveq	#1,d0			* 1 means FAILED to erase FLASH
 Erase_Return:
 		rts
 
 * ===========================================================================
 * =============== End of Erase_FLASH_Chips ==================================
+* ===========================================================================
+
+
+* =============== S U B	R O U T	I N E =======================================
+* ===========================================================================
+* =============== Flash_Programming =========================================
+* ===========================================================================
+*
+*
+*	d0 - used to return pass/fail (can also be used for anything temporarily)
+*	d1 - used for delay loop counters and testing which FLASH chip type
+*	d2 - used to store/countdown the number of bytes to program
+*	d3 - used to get the bytes for programming from the FLASH Write Buffer
+*	d4 - used to check the programmed byte
+*	d5 - used for programming retry counter
+*	d6 - 0x5555 used for resetting the watchdog (already there)
+*	d7 - 0xAAAA used for resetting the watchdog (already there)
+*
+*	a0
+*	a1
+*	a2
+*	a3 - is the address of the FLASH_Write_Buffer
+*	a4 - is the first FLASH address to program (add to d2)
+*	a5 - used for Flash_Start_Address (already there)
+*		 either 0x40000 for T5.5 or 0x60000 for T5.2
+*	a6 - Watchdog SWSR in SIM address (already there)
+*
+* ===========================================================================
+
+* ===========================================================================
+* =============== First work out what type of FLASH chips are fitted ========
+* ===========================================================================
+
+Flash_Programming:
+		movea.l	#FlashAddress,a3	* FLASH Write Buffer
+		movea.l	(a3),a4			* Where to start programming in FLASH
+		cmpa.l	a4,a5				* first, check for flash address range
+		bhi.w	Programming_Error
+		clr.l	d2
+		move.b	4(a3),d2				* Get number of bytes to program
+		move.b	(FLASH_Type).w,d1
+		cmpi.b	#$20,d1					* AMD 29F010 Device id
+		beq.w	Flash_29F
+		cmpi.b	#$D5,d1					* Atmel 29C010 Device id
+		beq.b	Flash_29C
+		cmpi.b	#$5D,d1					* Atmel 29C512 Device id
+		beq.b	Flash_29C
+		bra.b	Flash_28F				* Assume that they are 28F512/010
+
+		
+* ===========================================================================
+* =============== Program Atmel 29C010 FLASH chip types =====================
+* ===========================================================================
+*
+* dummy 'placeholder' code for Atmel - always 'fails'
+*
+* ===========================================================================
+	
+Flash_29C:
+		bra.w	Programming_Error	* Branch back to where Flash_Prog fails
+
+* ===========================================================================
+* =============== End of Program Atmel 29C010 FLASH chip types ==============
+* ===========================================================================
+
+
+* ===========================================================================
+* =============== Program 28F512/010 FLASH chip types =======================
+* ===========================================================================
+*
+*	d0 - used to get the bytes for programming from the FLASH Write Buffer
+*	d1 - used for delay loop counters and testing which FLASH chip type
+*	d2 - used to store/countdown the number of bytes to program
+*	d3 - used for 28F FLASH program command - 0x40
+*	d4 - used for 28F FLASH verify command - 0xC0
+*	d5 - used for programming retry counter
+*	d6 - 0x5555 used for resetting the watchdog (already there)
+*	d7 - 0xAAAA used for resetting the watchdog (already there)
+*
+*	a0
+*	a1
+*	a2
+*	a3 - is the address of the FLASH_Write_Buffer
+*	a4 - is the first FLASH address to program (add to d2)
+*	a5 - used for Flash_Start_Address (already there)
+*		 either 0x40000 for T5.5 or 0x60000 for T5.2
+*	a6 - Watchdog SWSR in SIM address (already there)
+*
+* note -1 (a4,d2.l) FLASHBuffer because using count of bytes in d2
+*
+* ===========================================================================
+
+Flash_28F:
+		move.b	#$40,d3					* FLASH program command
+		move.b	#$C0,d4					* FLASH verify command
+Flash_28F_Another:
+		move.b	4(a3,d2.l),d0			* Get byte to be programmed into d3
+		cmpi.b	#$FF,d0					* Check for FF (should already be FF)
+		beq.b	Already_0xFF			* Don't need to program 0xFF
+		moveq	#$19,d5					* 25 retries to	program
+* ---------------------------------------------------------------------------
+Flash_Program_Loop:
+		move.b	d3,-1(a4,d2.l)			* FLASH program command
+		move.b	d0,-1(a4,d2.l)			* Write	data to	flash address
+		moveq 	#Count_10us,d1
+Program_10us_Delay:
+		nop
+		dbeq	d1,Program_10us_Delay
+		move.b	d4,-1(a4,d2.l)			* FLASH verify command
+		moveq 	#Count_6us,d1
+Verify_6us_Delay:
+		nop
+		dbeq	d1,Verify_6us_Delay
+		cmp.b	-1(a4,d2.l),d0			* check that FLASH value is correct
+		bne.b	Byte_Not_Programmed
+* ---------------------------------------------------------------------------
+Already_0xFF:
+		subq.l	#1,d2					* Are we done yet?
+		bne.b	Flash_28F_Another
+		bra.b	Programming_Done
+* ---------------------------------------------------------------------------
+Byte_Not_Programmed:
+		subq.b	#1,d5					* 25 retries to	program
+		bne.b	Flash_Program_Loop		* Retry if some retries left		
+* ---------------------------------------------------------------------------
+Programming_Done:
+		clr.w	(a5)			* Put_FLASH_In_Read_Mode
+		tst.w	(a5)			* Only needed for AMD, does no harm for Intel
+		tst.b	d5				* Error if d5 = 0, - 25 attempts FAILED
+		beq.w	Programming_Error
+		bra.w	Programming_OK			* Go back to where Flash_Prog OK
+* ===========================================================================
+* =============== End of Program 28F512/010 FLASH chip types ================
+* ===========================================================================
+
+
+* ===========================================================================
+* =============== Program AMD 29F010 FLASH chip types =======================
+* ===========================================================================
+*
+*	d0 - used to select between FLASH chip1 and chip2
+*	d1 - Program FLASH Command
+*	d2 - count of number of bytes - add to -1(a4) to get address to program
+*	d3 - byte to program into FLASH
+*	d4 - used for checking that FLASH is programmed
+*	d5 - used to check for a programming timeout error 
+*	d6 - 0x5555 used for resetting the watchdog - also for AMD 29F commands
+*	d7 - 0xAAAA used for resetting the watchdog - also for AMD 29F commands
+*
+*	a3 - is the address of the FLASH_Write_Buffer
+*	a4 - is the first FLASH address to program (add to d2)
+*	a5 - used for Flash_Start_Address (already there)
+*	a6 - Watchdog SWSR in SIM address (already there)
+*
+*============================================================================
+
+Flash_29F:
+		move.b	#$A0,d1					* Program FLASH Command
+		move.l	a4,d0					* work out if chip 1 or 2...
+		add.l	d2,d0					* ...by adding address and byte count
+		and.l	#1,d0					* ...to see if odd or even 
+Flash_29F_Another:
+		bchg	#0,d0					* swap between chip 1 and 2 for each
+		move.b	4(a3,d2.l),d3			* get a byte to program
+		cmpi.b	#$FF,d3					* Check for FF (should already be FF)
+		beq.b	Flash_29F_OK			* Don't need to program 0xFF
+		move.b	d7,$5555*2(a5,d0.l)		*
+		move.b	d6,$2AAA*2(a5,d0.l)		*
+		move.b	d1,$5555*2(a5,d0.l)		* Program FLASH sequence
+		move.b	d3,-1(a4,d2.l)			* Write	data to	flash address
+		and.b	#$80,d3					* Isolate Bit 7 for testing
+Flash_29F_Verify:
+		move.b	-1(a4,d2.l),d4			* Read back from FLASH
+		move.b	d4,d5					* store a copy to test for timeout
+		and.b	#$80,d4
+		cmp.b	d3,d4					* Test to see if Bit 7 matches
+		beq.b	Flash_29F_OK
+		btst	#5,d5					* Test to see if timeout
+		beq.b	Flash_29F_Verify		* Not timed out so check again
+		move.b	-1(a4,d2.l),d4			* Read back from FLASH
+		and.b	#$80,d4
+		cmp.b	d3,d4					* Test to see if Bit 7 matches
+		beq.b	Flash_29F_OK
+		move.b	d7,$5555*2(a5,d0.l)		* Programming timed out if here
+		move.b	d6,$2AAA*2(a5,d0.l)		* Have to reset FLASH chip when...
+		move.b	#$F0,$5555*2(a5,d0.l)	* ...programming fails
+		bra.b	Programming_Error		* Go back to where Flash_Prog fails
+* ---------------------------------------------------------------------------
+Flash_29F_OK:
+		subq.l	#1,d2
+		bne.b	Flash_29F_Another		* OK so program another one
+*		bra.w	Programming_OK
+
+* ===========================================================================
+* =============== End of Program AMD 29F010 FLASH chip types ================
+* ===========================================================================
+
+
+* ===========================================================================
+*	d0 - used to return pass/fail
+* ===========================================================================
+
+Programming_OK:
+		clr.w	d0
+		bra.b	Programming_Return
+* ---------------------------------------------------------------------------
+Programming_Error:
+		moveq	#1,d0
+Programming_Return:
+		rts
+
+* ===========================================================================
+* =============== End of Flash_Programming ==================================
 * ===========================================================================
 
 
@@ -1300,6 +1346,9 @@ Erase_Return:
 * First of all search backwards through the BIN file footer information to
 * find the start and end addresses to calculate the checksum between.
 *
+* Look for the ROM_Offset identifier, 0xFD, get the offset address then
+* look for the Code_End identifier, 0xFE, get the Code End address
+*
 * These are stored, backwards, as 'ascii' text representations and must be
 * converted to an 0x 'long' value.
 *
@@ -1309,6 +1358,7 @@ Erase_Return:
 *	d1 - used for 'footer' Identifier 'string' length value
 *	d2 - Start address for calculating the checksum
 *	d3 - End address for calculating the checksum
+*	d4 - used for ROM_offset and Code_END header identifiers
 *
 *	a2 - used to find identifier strings in the 'footer'
 *
@@ -1318,62 +1368,47 @@ Get_Checksum:
 		movea.l	#Last_Address_Of_T5-4,a2
 		clr.l	d0
 		clr.l	d1
-		clr.l	d2				* ROM_Offset
-		clr.l	d3				* Code_End
+		clr.l	d2			* ROM_Offset
+		clr.l	d3			* Code_End
+		clr.l	d4			* Identifier
+		move.b	#$FD,d4			* Search for ROM_Offset identifier
 * ---------------------------------------------------------------------------
-Search_For_ROM_Offset:
+Search_For_Identifier:
 		move.b	(a2),d1			* String Length
-		beq.w	Checksum_Error	* If zero then erasing failed
+		beq.w	Checksum_Error		* Zero because erasing failed
 		cmpi.b	#$FF,d1
-		beq.w	Checksum_Error	* If 0xFF then programming failed
+		beq.w	Checksum_Error		* 0xFF because programming failed
 		move.b	-1(a2),d0		* Identifier value
 		suba.l	d1,a2			* Subtract string length and another 2 for
 		subq.l	#2,a2			* length and identifier bytes to get to start
 *								* of the string
-		cmpi.b	#$FD,d0			* Check for ROM_Offset identifier
-		bne.b	Search_For_ROM_Offset	* Keep looking
+		cmp.b	d4,d0			* Check to see if matching identifier
+		bne.b	Search_For_Identifier	* Keep looking
 * ---------------------------------------------------------------------------
-Read_ROM_Offset:
-		move.b	(a2,d1.l),d0	* Get an ascii character from the ROM_Offset
+Convert_ASCII:
+		move.b	(a2,d1.l),d0		* Get an ascii character from the ROM_Offset
 		subi.b	#$30,d0			* Subtract ascii '0' (0x30)
 		cmpi	#$A,d0			* see if the result is 0-9 (less than 10 (0xA)
-		bcs.b	Get_ROM_Offset	
+		bcs.b	Calculate_Address	
 		subq.b	#7,d0			* Subtract 7 ('A'(0x41) - '0'(0x30) - 10)
 *								* (because value is 10-15 - 0xA-0xF)
 * ---------------------------------------------------------------------------
-Get_ROM_Offset:
+Calculate_Address:
 		lsl.l	#4,d2			* ROM_Offset, 'shift' to make room 
 		or.b	d0,d2			* put in next hex value
 		subq.b	#1,d1			* 1 less hex value to get
-		bne.b	Read_ROM_Offset	* keep going if not all values read in yet
+		bne.b	Convert_ASCII	* keep going if not all values read in yet
 * ---------------------------------------------------------------------------
-Search_Code_End:
-		move.b	(a2),d1
-		beq.w	Checksum_Error
-		cmpi.b	#$FF,d1
-		beq.w	Checksum_Error
-		move.b	-1(a2),d0
-		suba.l	d1,a2
-		subq.l	#2,a2
-		cmpi.b	#$FE,d0			* Check for Code_End identifier
-		bne.b	Search_Code_End
-* ---------------------------------------------------------------------------
-Read_Code_End:
-		move.b	(a2,d1.l),d0
-		subi.b	#$30,d0
-		cmpi	#$A,d0
-		bcs.b	Get_Code_End
-		subq.b	#7,d0
-* ---------------------------------------------------------------------------
-Get_Code_End:
-		lsl.l	#4,d3			* Code_End
-		or.b	d0,d3
-		subq.b	#1,d1
-		bne.b	Read_Code_End
+		exg	d2,d3			* NOTE there is a double exchange!
+		cmpi.b	#$FE,d4			* Check for Code_End identifier
+		beq.b	Have_Addresses
+		addq.b	#1,d4
+		bra.b	Search_For_Identifier	* Search for Code_End address
 * ---------------------------------------------------------------------------
 * d2 now has the ROM_Offset
 * d3 now has the Code_End
 
+Have_Addresses:
 		cmp.l	d2,d3			* Check if Code_End is before ROM_Offset !!!
 		bls.b	Checksum_Error
 		cmpi.l	#Last_Address_Of_T5,d3	* Check if Code_End is past end of T5
@@ -1393,7 +1428,7 @@ Get_Code_End:
 *
 *	d0 - used to return the calculated checksum
 *	d1 - used to fetch each byte when calculating
-*	d2 - Value of dirst address to calculate from
+*	d2 - Value of first address to calculate from
 *	d3 - value of last address to calculate to
 *	d6 - 0x5555 used for resetting the watchdog
 *	d7 - 0xAAAA used for resetting the watchdog
@@ -1414,6 +1449,8 @@ Do_Calculation:
 * Reset_Software_Watchdog
 		move.w	d6,(a6)				* Write 0x5555 to SWSR in SIM
 		move.w	d7,(a6)				* Write 0xAAAA to SWSR in SIM
+		move.b	(a2)+,d1
+		add.l	d1,d0	
 		move.b	(a2)+,d1
 		add.l	d1,d0	
 		cmpa.l	d3,a2
@@ -1470,22 +1507,22 @@ Get_FLASH_Id_Bytes:
 * ===========================================================================
 		movea.l	#FLASH_Make,a2
 		ori.w	#$40,($FFFC14).l		* Turn FLASH power on
-		move.w  #10000,d1
+		move.w  #Count_10ms,d1
 Wait_For_FLASH_Power:
 		nop
 		dbeq	d1,Wait_For_FLASH_Power
-		move.b	#$FF,(a5)				*
-		move.b	#$FF,(a5)				* Writing FF twice resets 28Fxxx
+		move.b	#$FF,(a5)			*
+		move.b	#$FF,(a5)			* Writing FF twice resets 28Fxxx
 		move.b	#$90,(a5)
-		move.b	(a5),(a2)+				* Manufacturer id
-		move.b	2(a5),(a2)				* Device id
-		move.b	#$FF,(a5)				*
-		move.b	#$FF,(a5)				* Writing FF twice resets 28Fxxx
-		cmpi.b	#$89,-(a2)				* Check for Intel Manufacturer id
+		move.b	(a5),(a2)+			* Manufacturer id
+		move.b	2(a5),(a2)			* Device id
+		move.b	#$FF,(a5)			*
+		move.b	#$FF,(a5)			* Writing FF twice resets 28Fxxx
+		cmpi.b	#$89,-(a2)			* Check for Intel Manufacturer id
 		beq.b	FLASH_id_return
-		cmpi.b	#1,(a2)					* Check for AMD Manufacturer id
+		cmpi.b	#1,(a2)				* Check for AMD Manufacturer id
 		beq.b	FLASH_id_return
-		cmpi.b	#$31,(a2)				* Check for CSI Manufacturer id
+		cmpi.b	#$31,(a2)			* Check for CSI Manufacturer id
 		beq.b	FLASH_id_return
 		andi.w	#$FFBF,($FFFC14).l		* Turn FLASH power off (not needed)
 * ===========================================================================
@@ -1494,13 +1531,19 @@ Wait_For_FLASH_Power:
 		move.b	d7,$5555*2(a5)			* d7 = 0xAA
 		move.b	d6,$2AAA*2(a5)			* d6 = 0x55
 		move.b	#$90,$5555*2(a5)		* get FLASH id
-		jsr		(Wait_10ms).w			* 10ms delay for Atmel devices
-		move.b	(a5),(a2)+				* Manufacturer id
-		move.b	2(a5),(a2)				* Device id
+		move.w	#Count_10ms,d1			* 10ms delay for Atmel devices
+Wait_10ms_for_ATMEL_id:
+		nop
+		dbeq	d1,Wait_10ms_for_ATMEL_id
+		move.b	(a5),(a2)+			* Manufacturer id
+		move.b	2(a5),(a2)			* Device id
 		move.b	d7,$5555*2(a5)			* d7 = 0xAA
 		move.b	d6,$2AAA*2(a5)			* d6 = 0x55
 		move.b	#$F0,$5555*2(a5)		* Reset 29F/Cxxx FLASH chip
-		jsr		(Wait_10ms).w			* 10ms delay for Atmel devices
+		move.w	#Count_10ms,d1			* 10ms delay for Atmel devices
+Wait_10ms_for_ATMEL_reset:
+		nop
+		dbeq	d1,Wait_10ms_for_ATMEL_reset
 FLASH_id_return:
 		rts
 
@@ -1509,42 +1552,9 @@ FLASH_id_return:
 * ===========================================================================
 
 
-* =============== S U B	R O U T	I N E =======================================
-* ===========================================================================
-* =============== Wait_10ms =================================================
 * ===========================================================================
 *
-* Atmel FLASH chips need a 10ms delay for some things
-* NOTE also reset the watchdog to stop T5 ECU restarting !
-*
-* ===========================================================================
-*
-*	d1 - used for delay loop timer
-*	d6 - 0x5555 used for resetting the watchdog
-*	d7 - 0xAAAA used for resetting the watchdog
-*
-*	a6 - Watchdog SWSR in SIM address
-*
-* ===========================================================================
-
-Wait_10ms:
-		move.w	#Count_10ms,d1
-Wait_10ms_loop:
-		nop
-		dbeq	d1,Wait_10ms_loop
-* Reset_Software_Watchdog
-		move.w	d6,(a6)				* Write $5555 to SWSR in SIM
-		move.w	d7,(a6)				* Write $AAAA to SWSR in SIM
-		rts
-
-* ===========================================================================
-* =============== End of Wait_10ms ==========================================
-* ===========================================================================
-
-
-* ===========================================================================
-*
-* 	Data area used for storing various things :-)
+* 	Data area used for storing various things ;-)
 *
 * ===========================================================================
 
@@ -1552,8 +1562,8 @@ CanRxBuffer:	ds.b	8				* 8 Bytes for CAN Receive messages
 *
 CanTxBuffer:	ds.b	8				* 8 Bytes for CAN Transmit messages
 *
-FLASH_Make:		dc.b	0
-FLASH_Type:		dc.b	0
+FLASH_Make:	dc.b	0
+FLASH_Type:	dc.b	0
 *
 FlashAddress:	dc.l	0
 FlashLength:	dc.b	0
