@@ -10,14 +10,75 @@
 * all in one go.
 *
 * ===========================================================================
+*
+*	MyBooty
+*	By Sophie Dexter
+*	With help and lots of information from Dilemma
+*	Also using bits and pieces from General Failure, Patrik Servin and
+*	J.K Nilsson whose scripts I borrowed heavily from :-)
+*
+* ===========================================================================
 * ===========================================================================
 *
-*	MyBooty Version 1.1
+* This is 'My Cheeky Little Turbo-Charged Bootloader' for T5.5 and T5.2 ECUs
+*
+* 'Universal' use it with all T5 ECU types, T5.2, T5.5, 16 MHz and 20 Mhz
+*
+* It does everything the other Bootloaders do and adds a command, C9, which
+* replies with the 'Start Address of FLASH' and the FLASH chip's 'ID'
+*
+* Did I mention that it works with AMD 29F010 chips too? Well it does :-)
+* It also recognises Atmel 29C512/010 chips but it can't program them :-(
+*
+* 'Turbo-Charged' - it does everything faster than other bootloaders.
+* 
+* 'little' - it does more yet is half the size (it loads more quickly too :-)
+*
+* 'Cheeky' - well, that's for me to know and you to find out ;-)
+* NOTE - cheeky nametag removed in version 1.1 :-(
+*
+* ===========================================================================
+* ===========================================================================
+*
+* WARNING: Use at your own risk, sadly this software comes with no guarantees
+* This software is provided 'free' and in good faith, but the author does not
+* accept liability for any damage arising from its use.
+*
+* ===========================================================================
+* ===========================================================================
+*
+*	Version 1.2
+*	18-Apr-2011
+*
+*	BUG FIXES
+*	PREPARATION
+*	Correction to PortQS Data Direction Register (DDRQS) setting
+*	Corrected various spellings and typos :o)
+*	Correct spelling of Nilsson :o)
+*
+*	IMPROVEMENTS
+*	'dbeq' instruction replaced by 'dbra' in various loops because they are
+*	purely counted loops and it is potentially confusing to use conditional
+*	test version of this instruction.
+*	'move.b #$FF,<ea>' replaced by 'st <ea>' saves 2 bytes each time.
+*	Consequently MyBooty is slightly smaller :-)
+*	SEND_A_CAN_MESSAGE and WAIT_FOR_CAN_MESSAGE
+*	d2 used register to test when the end of the CAN buffer had been reached
+*	instead of immediate compare 'cmpi'. No size change because 'moveq' for d2
+*	gobbles up the 2 bytes saved by using the smaller 'cmp Rn,Rm' instruction
+*	but 'cmp Rn,Rm' is faster. Consequently MyBooty is slightly faster :-)
+*	DATA_COMMAND
+*	Almost a total re-write, making use of a dbra loop to simplify counting
+*	bytes as they are copied into the FlashBuffer and 'move.b (An)+,(Am)+'
+*	as a faster way of copying them (compared to 'move.b (An,Dx.l),(Am,Dy.l)'
+*	with separate counters in registers Dx, Dy). Consequently MyBooty is
+*	slightly faster and smaller :-)
+*
+* ===========================================================================
+* ===========================================================================
+*
+*	Version 1.1
 *	12-Apr-2011
-*	By Sophie Dexter
-* 	With help and lots of information from Dilemma
-*	Also using bits and pieces from General Failure, Patrik Servin and
-*	J.K.Nillson whose scripts I borrowed heavily from :-)
 *
 *	BUG FIXES
 *	FLASH_FILL_WITH_ZERO
@@ -48,54 +109,28 @@
 *
 *	IMPROVEMENTS
 *	BOOTLOADER_LOOP
-*	Changed the order that commands are checked so that most common
-*	commands are checked first. Consequently MyBooty is slightly
-*	faster :-)
+*	Changed the order that commands are checked so that most common commands
+*	are checked first. Consequently MyBooty is slightly faster :-)
 *	CHECKSUM
 *	Smaller method of working out OFFSET and Code_End addresses. Faster
-*	calculation of checksum relying on there always being an even number
-*	of bytes to calculate the checksum over. Consequently MyBooty is
-*	slightly faster and smaller :-)
+*	calculation of checksum relying on there always being an even number of
+*	bytes to calculate the checksum over. Consequently MyBooty is slightly
+*	faster and smaller :-)
 *	PREPARATION
 *	Simpler frequency setting, MyBooty is slightly smaller as a result :-)
 *	FLASH_29F
 *	Removed Watchdog resets because not longer needed. Consequently MyBooty
 *	is slightly faster and smaller :-)
 *	SEND_CAN & WAIT_CAN
-*	Simpler instruction type used to fill/empty buffers. I had hoped
-*	this would speed things up a little, it doesn't but at least MyBooty
-*	is slightly smaller :-)
+*	Simpler instruction type used to fill/empty buffers. I had hoped this
+*	would speed things up a little, it doesn't but at least MyBooty is
+*	slightly smaller :-)
 *
 * ===========================================================================
 * ===========================================================================
 *
 *	MyBooty Version 1
 *	7-May-2010
-*	By Sophie Dexter
-* 	With help and lots of information from Dilemma
-*	Also using bits and pieces from General Failure and Patrik Servin
-*
-* WARNING: Use at your own risk, sadly this software comes with no guarantees
-* This software is provided 'free' and in good faith, but the author does not
-* accept liability for any damage arising from its use.
-*
-* ===========================================================================
-*
-* This is 'My Cheeky Little Turbo-Charged Bootloader' for T5.5 and T5.2 ECUs
-*
-* 'Universal' use it with all T5 ECU types, T5.2, T5.5, 16 MHz and 20 Mhz
-*
-* It does everything the other Bootloaders do and adds a command, C9, which
-* replies with the 'Start Address of FLASH' and the FLASH chip's 'ID'
-*
-* Did I mention that it works with AMD 29F010 chips too? Well it does :-)
-* It also recognises Atmel 29C512/010 chips but it can't program them :-(
-*
-* 'Turbo-Charged' - it does everything faster than other bootloaders.
-* 
-* 'little' - it does more yet is half the size (it loads more quickly too :-)
-*
-* 'Cheeky' - well, that's for me to know and you to find out ;-)
 *
 * ===========================================================================
 *
@@ -144,7 +179,7 @@
 *		moveq 	#Count_6us,d1
 * Verify_6us_Delay:
 *		nop
-*		dbeq	d1,Verify_6us_Delay
+*		dbra	d1,Verify_6us_Delay
 *
 * So, what's that 'nop' instruction doing there, it doesn't do anything does
 * it? Well, the 68332 processor has a special 'loop mode' but for it to work
@@ -366,16 +401,16 @@
 
 * Some 'equates' used in the program code:
 
-SYNCR			EQU	$FFFA04		* Frequency Settings
-SYPCR			EQU	$FFFA21		* Watchdog Settings
-SWSR			EQU	$FFFA27		* Watchdog service register(B)
+SYNCR				EQU	$FFFA04		* Frequency Settings
+SYPCR				EQU	$FFFA21		* Watchdog Settings
+SWSR				EQU	$FFFA27		* Watchdog service register(B)
 Watchdog_Address	EQU	$FFFA26		* Watchdog service register(W)
 CAN_Address1		EQU	$F007FF
 CAN_Address2		EQU	$F00800
 Last_Address_Of_T5	EQU	$7FFFF
 Intel_Make_Id		EQU	$89
-AMD_Make_Id		EQU	$01
-CSI_Make_Id		EQU	$31
+AMD_Make_Id			EQU	$01
+CSI_Make_Id			EQU	$31
 Atmel_Make_Id		EQU	$1F
 Intel_28F512_Id		EQU	$B8		* Also CSI
 Intel_28F010_Id		EQU	$B4		* Also CSI
@@ -384,11 +419,11 @@ AMD_28F010_Id		EQU	$A7
 AMD_29F010_Id		EQU	$20
 Atmel_29C512_Id		EQU	$5D
 Atmel_29C010_Id		EQU	$D5
-Count_10ms		EQU	22000		* 22,001 loops x 0.48 = 10.56 ms
-Count_10us		EQU	21		* 22 loops x 0.48 = 10.56 us
-Count_6us		EQU	12		* 13 loops x 0.48 = 6.24 us
+Count_10ms			EQU	22000		* 22,001 loops x 0.48 = 10.56 ms
+Count_10us			EQU	21		* 22 loops x 0.48 = 10.56 us
+Count_6us			EQU	12		* 13 loops x 0.48 = 6.24 us
 
-	org 	$5000
+	org		$5000
 
 
 * =============== M A I N _ P R O G R A M ===================================
@@ -436,11 +471,8 @@ Synthesiser_Lock_Flag:
 		andi.w	#$FFBF,($FFFC14).l	* PQS Data Register (PORTQS)
 		ori.w	#$10,($FFFC14).l	* PQS Data Register (PORTQS)
 
-		andi.b	#$40,($FFFC16).l	* PQS Data Direction Register (DDRQS)
-		ori.w	#$40,($FFFC16).l	* PQS Data Direction Register (DDRQS)
-
-		andi.w	#$FFDF,($FFFC16).l	* PQS Data Direction Register (DDRQS)
-		ori.w	#$10,($FFFC16).l	* PQS Data Direction Register (DDRQS)
+		andi.w	#$8FDF,($FFFC16).l	* PQS Data Direction Register (DDRQS)
+		ori.w	#$50,($FFFC16).l	* PQS Data Direction Register (DDRQS)
 
 * Work out the first address of FLASH from the Chip-Select Register
 * This will be 0x40000 for T5.5 or 0x60000 for T5.2
@@ -448,7 +480,7 @@ Synthesiser_Lock_Flag:
 		move.w	($FFFA48).l,d0	* Chip-Select Base Address Register Boot ROM
 		andi.l	#$FFF8,d0
 		lsl.l	#8,d0
-		move.l	d0,a5			* FLASH_Start_Address held in a5 register
+		move.l	d0,a5				* FLASH_Start_Address held in a5 register
 
 * Store the Watchdog address in a6 and reset values in d6 and d7 registers
 
@@ -513,9 +545,10 @@ Bootloader_Loop:
 * ===========================================================================
 
 Send_CAN_Response:
-		jsr		(Send_A_CAN_Message).w
+		jsr	(Send_A_CAN_Message).w
 		cmpi.b	#$C2,(CanTxBuffer).w		* CanTxBuffer0, $C2 - exit
-		bne.b	Bootloader_Loop		* Then return to start
+		bne.b	Bootloader_Loop				* Then return to start
+* ---------------------------------------------------------------------------
 		rts		* else,	we were	signalled to quit the main loop	by C2 command
 * ===========================================================================
 * =============== End of Bootloader_Loop ====================================
@@ -531,8 +564,6 @@ A5_Command:
 		lsl.l	#8,d0		* Remove A5 code by shifting left 8 times, d0 now
 *							  contains most of the FLASH address
 		or.b	(a0)+,d0				* Get low byte of FLASH address
-*		movea.l	d0,a2					* FLASH address now in a2 register	
-*		move.l	a2,(FlashAddress).w		* Store a copy of the FLASH address
 		move.l	d0,(FlashAddress).w		* Store a copy of the FLASH address
 		move.b	(a0),(FlashLength).w	* FLASH bytes to follow
 
@@ -546,32 +577,28 @@ A5_Command:
 
 Data_Command:
 		movea.l	#FlashBuffer,a2		* Buffer for storing bytes for FLASH
-		moveq	#1,d0				* Count of bytes read from CAN buffer
+		moveq	#6,d0				* Count-1 of bytes to read from CAN buffer
 		clr.l	d1
-		move.b	(a0),d1				* Offset into FlashBuffer
+		move.b	(a0)+,d1			* Offset into FlashBuffer
+        adda.l  d1,a2               * 
 		move.b	(FlashLength).w,d2	* Total number of bytes to put in buffer
 Copy_Byte:
-		move.b	(a0,d0.l),(a2,d1.l)	* Copy from CANbuffer to Flash Buffer
+		move.b	(a0)+,(a2)+			* Copy from CANbuffer to Flash Buffer
 		addq.b	#1,d1
 		cmp.b	d2,d1				* Has the Flash buffer been filled
 		beq.b	Do_Programming		* Program the flash if it is
-		cmpi.b	#7,d0				* Was this the last Byte in CAN Buffer
-		beq.b	Emptied_CAN
-		addq.b	#1,d0
-		bra.b	Copy_Byte
+        dbra    d0,Copy_Byte		* Was this the last Byte in CAN Buffer
+		clr.b	(a1)
+		bra.w	Send_CAN_Response   * Emptied_CAN buffer
 * ---------------------------------------------------------------------------
 Do_Programming:
 		jsr		(Flash_Programming).w
 		move.b	d0,(a1)+
-		beq.w	Send_CAN_Response
+		beq.w	Send_CAN_Response       * FLASH programing succeeded
 * ---------------------------------------------------------------------------
 		move.l	d4,(a1)					* Address that failed
 		andi.w	#$FFBF,($FFFC14).l		* Turn FLASH power off
-		bra.w	Send_CAN_Response
-* ---------------------------------------------------------------------------
-Emptied_CAN:
-		clr.b	(a1)
-		bra.w	Send_CAN_Response
+		bra.w	Send_CAN_Response       * FLASH programing failed
 * ===========================================================================
 
 
@@ -672,12 +699,13 @@ C9_Command:
 * =============== Wait_For_CAN_Message ======================================
 * ===========================================================================
 *
-* This is a super sripped down version of the same code in the T5 BIN file
+* This is a super stripped down version of the same code in the T5 BIN file
 * I don't know what it does exactly I just took bits out until it stopped
 * working - then put the last bit back in again to make it work :-)
 *
 *	d0 - used for checking CAN status and a counter for moving data
 *	d1 - Stores a copy of the Status Register (sr) while the interrupt is off
+*	d2 - used to check the count of bytes in CanRxBuffer
 * 
 *	a0 - CAN Receive Buffer address
 *	a2 - CAN instruction address
@@ -718,12 +746,13 @@ Read_CAN_Message:
 		move.b	#$13,(a2)			* 
 		move.b	#8,(a3)				* 
 		moveq	#$14,d0
+		moveq	#$1B,d2				* 0x14 + 0x07 = 0x1B
 * ---------------------------------------------------------------------------
 CAN_Read_Bytes_Loop:
 		move.b	d0,(a2)				* 
 		addq.b	#1,d0
 		move.b	(a3),(a0)+
-		cmpi.b	#$1B,d0				* 0x14 + 0x07 = 0x1B
+		cmp.b	d2,d0				* All done ?
 		bls.b	CAN_Read_Bytes_Loop
 * ---------------------------------------------------------------------------
 		move.b	#$12,(a2)			* 
@@ -747,12 +776,13 @@ Wait_For_Read_Done:
 * =============== Send_A_CAN_Message ========================================
 * ===========================================================================
 *
-* This is a super sripped down version of the same code in the T5 BIN file
+* This is a super stripped down version of the same code in the T5 BIN file
 * I don't know what it does exactly I just took bits out until it stopped
 * working - then put the last bit back in again to make it work :-)
 *
 *	d0 - used for checking CAN status and a counter for moving data
 *	d1 - Stores a copy of the Status Register (sr) while the interrupt is off
+*	d2 - used to check the count of bytes in CanTxBuffer
 * 
 *	a1 - CAN Transmit Buffer address
 *	a2 - CAN instruction address
@@ -778,12 +808,13 @@ Wait_For_Ready_Send:
 		beq.b	Wait_For_Ready_Send
 * ---------------------------------------------------------------------------
 		moveq	#9,d0
+		moveq	#$10,d2				* 0x09 + 0x07 = 0x10
 * ---------------------------------------------------------------------------
 CAN_Send_Bytes_Loop:
-		move.b	d0,(a2)				* 
+		move.b	d0,(a2)
 		addq.b	#1,d0
-		move.b	(a1)+,(a3)	* 
-		cmpi.b	#$10,d0				* 0x09 + 0x07 = 0x10
+		move.b	(a1)+,(a3)
+		cmp.b	d2,d0				* All done ?
 		bls.b	CAN_Send_Bytes_Loop
 * ---------------------------------------------------------------------------
 		move.b	#8,(a2)				* 
@@ -945,12 +976,12 @@ Flash_Zero_Loop:
 		moveq 	#Count_10us,d1
 Zero_Program_10us_Delay:
 		nop
-		dbeq	d1,Zero_Program_10us_Delay
+		dbra	d1,Zero_Program_10us_Delay
 		move.b	d4,-1(a5,d2.l)		* FLASH verify command
 		moveq 	#Count_6us,d1
 Zero_Verify_6us_Delay:
 		nop
-		dbeq	d1,Zero_Verify_6us_Delay
+		dbra	d1,Zero_Verify_6us_Delay
 		tst.b	-1(a5,d2.l)			* Check if zero
 		bne.b	Zero_Not_Programmed
 * ---------------------------------------------------------------------------
@@ -967,11 +998,11 @@ Zero_Not_Programmed:
 		bne.b	Flash_Zero_Loop		* Retry if some retries left		
 * ---------------------------------------------------------------------------
 Zeroing_Done:		
-		clr.w	(a5)			* Put_FLASH_In_Read_Mode
+		clr.w	(a5)				* Put_FLASH_In_Read_Mode
 		tst.w	(a5)			* Only needed for AMD, does no harm for Intel
-		tst.b	d5				* Error if d5 = 0, - 25 attempts FAILED
+		tst.b	d5					* Error if d5 = 0, - 25 attempts FAILED
 		bne.b	Erase_28F_FLASH		* OK to erase if d5 < 25 attempts needed
-		moveq	#2,d0			* 2 means writing zeroes failed
+		moveq	#2,d0				* 2 means writing zeroes failed
 		bra.w	Erase_Return
 
 * ===========================================================================
@@ -1000,10 +1031,10 @@ Zeroing_Done:
 
 Erase_28F_FLASH:
 		move.l	d0,d2			* Recall the copy of FLASH size for erasing
-		move.b	#$FF,d0				* FLASH is 0xFF when erased
+		st		d0					* FLASH is 0xFF when erased
 		move.b	#$20,d3				* FLASH erase command
 		move.b	#$A0,d4				* FLASH erase verify command
-		move.l	#$03E803E8,d5	* Maximum 1000 (0x3E8) Erase attempts
+		move.l	#$03E803E8,d5		* Maximum 1000 (0x3E8) Erase attempts
 * ---------------------------------------------------------------------------
 Erase_Flash:
 		move.b	d3,-1(a5,d2.l)		* FLASH erase command
@@ -1011,14 +1042,14 @@ Erase_Flash:
 		move.w	#Count_10ms,d1
 Delay_Loop_While_Erase:
 		nop
-		dbeq	d1,Delay_Loop_While_Erase * Delay Loop
+		dbra	d1,Delay_Loop_While_Erase * Delay Loop
 * ---------------------------------------------------------------------------
 Verify_Erased:
 		move.b	d4,-1(a5,d2.l)		* FLASH erase verify command
 		moveq	#Count_6us,d1
 Erase_Verify_6us_Delay:
 		nop
-		dbeq	d1,Erase_Verify_6us_Delay
+		dbra	d1,Erase_Verify_6us_Delay
 * Reset_Software_Watchdog
 		move.w	d6,(a6)				* Write $5555 to SWSR in SIM
 		move.w	d7,(a6)				* Write $AAAA to SWSR in SIM
@@ -1112,7 +1143,7 @@ Erase_29F_OK:
 	
 Erase_OK:
 * Erase AMD_29F returns here if erased OK
-		clr.l	d0			* 0 means FLASH was erased
+		clr.l	d0				* 0 means FLASH was erased
 		bra.b	Erase_Return
 Erase_Failed:
 * Erase_AMD_29F returns here If Erase FAILED
@@ -1156,9 +1187,9 @@ Erase_Return:
 * ===========================================================================
 
 Flash_Programming:
-		movea.l	#FlashAddress,a3	* FLASH Write Buffer
-		movea.l	(a3),a4			* Where to start programming in FLASH
-		cmpa.l	a4,a5				* first, check for flash address range
+		movea.l	#FlashAddress,a3		* FLASH Write Buffer
+		movea.l	(a3),a4					* Where to start programming in FLASH
+		cmpa.l	a4,a5					* first, check for flash address range
 		bhi.w	Programming_Error
 		clr.l	d2
 		move.b	4(a3),d2				* Get number of bytes to program
@@ -1218,7 +1249,7 @@ Flash_28F:
 		move.b	#$40,d3					* FLASH program command
 		move.b	#$C0,d4					* FLASH verify command
 Flash_28F_Another:
-		move.b	4(a3,d2.l),d0			* Get byte to be programmed into d3
+		move.b	4(a3,d2.l),d0			* Get byte to be programmed into d0
 		cmpi.b	#$FF,d0					* Check for FF (should already be FF)
 		beq.b	Already_0xFF			* Don't need to program 0xFF
 		moveq	#$19,d5					* 25 retries to	program
@@ -1229,12 +1260,12 @@ Flash_Program_Loop:
 		moveq 	#Count_10us,d1
 Program_10us_Delay:
 		nop
-		dbeq	d1,Program_10us_Delay
+		dbra	d1,Program_10us_Delay
 		move.b	d4,-1(a4,d2.l)			* FLASH verify command
 		moveq 	#Count_6us,d1
 Verify_6us_Delay:
 		nop
-		dbeq	d1,Verify_6us_Delay
+		dbra	d1,Verify_6us_Delay
 		cmp.b	-1(a4,d2.l),d0			* check that FLASH value is correct
 		bne.b	Byte_Not_Programmed
 * ---------------------------------------------------------------------------
@@ -1368,16 +1399,16 @@ Get_Checksum:
 		movea.l	#Last_Address_Of_T5-4,a2
 		clr.l	d0
 		clr.l	d1
-		clr.l	d2			* ROM_Offset
-		clr.l	d3			* Code_End
-		clr.l	d4			* Identifier
+		clr.l	d2				* ROM_Offset
+		clr.l	d3				* Code_End
+		clr.l	d4				* Identifier
 		move.b	#$FD,d4			* Search for ROM_Offset identifier
 * ---------------------------------------------------------------------------
 Search_For_Identifier:
 		move.b	(a2),d1			* String Length
-		beq.w	Checksum_Error		* Zero because erasing failed
+		beq.w	Checksum_Error	* Zero because erasing failed
 		cmpi.b	#$FF,d1
-		beq.w	Checksum_Error		* 0xFF because programming failed
+		beq.w	Checksum_Error	* 0xFF because programming failed
 		move.b	-1(a2),d0		* Identifier value
 		suba.l	d1,a2			* Subtract string length and another 2 for
 		subq.l	#2,a2			* length and identifier bytes to get to start
@@ -1386,7 +1417,7 @@ Search_For_Identifier:
 		bne.b	Search_For_Identifier	* Keep looking
 * ---------------------------------------------------------------------------
 Convert_ASCII:
-		move.b	(a2,d1.l),d0		* Get an ascii character from the ROM_Offset
+		move.b	(a2,d1.l),d0	* Get an ascii character from the ROM_Offset
 		subi.b	#$30,d0			* Subtract ascii '0' (0x30)
 		cmpi	#$A,d0			* see if the result is 0-9 (less than 10 (0xA)
 		bcs.b	Calculate_Address	
@@ -1399,7 +1430,7 @@ Calculate_Address:
 		subq.b	#1,d1			* 1 less hex value to get
 		bne.b	Convert_ASCII	* keep going if not all values read in yet
 * ---------------------------------------------------------------------------
-		exg	d2,d3			* NOTE there is a double exchange!
+		exg	d2,d3				* NOTE there is a double exchange!
 		cmpi.b	#$FE,d4			* Check for Code_End identifier
 		beq.b	Have_Addresses
 		addq.b	#1,d4
@@ -1510,19 +1541,19 @@ Get_FLASH_Id_Bytes:
 		move.w  #Count_10ms,d1
 Wait_For_FLASH_Power:
 		nop
-		dbeq	d1,Wait_For_FLASH_Power
-		move.b	#$FF,(a5)			*
-		move.b	#$FF,(a5)			* Writing FF twice resets 28Fxxx
+		dbra	d1,Wait_For_FLASH_Power
+		st		(a5)					*
+		st		(a5)					* Writing FF twice resets 28Fxxx
 		move.b	#$90,(a5)
-		move.b	(a5),(a2)+			* Manufacturer id
-		move.b	2(a5),(a2)			* Device id
-		move.b	#$FF,(a5)			*
-		move.b	#$FF,(a5)			* Writing FF twice resets 28Fxxx
-		cmpi.b	#$89,-(a2)			* Check for Intel Manufacturer id
+		move.b	(a5),(a2)+				* Manufacturer id
+		move.b	2(a5),(a2)				* Device id
+		st		(a5)					*
+		st		(a5)					* Writing FF twice resets 28Fxxx
+		cmpi.b	#$89,-(a2)				* Check for Intel Manufacturer id
 		beq.b	FLASH_id_return
-		cmpi.b	#1,(a2)				* Check for AMD Manufacturer id
+		cmpi.b	#1,(a2)					* Check for AMD Manufacturer id
 		beq.b	FLASH_id_return
-		cmpi.b	#$31,(a2)			* Check for CSI Manufacturer id
+		cmpi.b	#$31,(a2)				* Check for CSI Manufacturer id
 		beq.b	FLASH_id_return
 		andi.w	#$FFBF,($FFFC14).l		* Turn FLASH power off (not needed)
 * ===========================================================================
@@ -1534,16 +1565,16 @@ Wait_For_FLASH_Power:
 		move.w	#Count_10ms,d1			* 10ms delay for Atmel devices
 Wait_10ms_for_ATMEL_id:
 		nop
-		dbeq	d1,Wait_10ms_for_ATMEL_id
-		move.b	(a5),(a2)+			* Manufacturer id
-		move.b	2(a5),(a2)			* Device id
+		dbra	d1,Wait_10ms_for_ATMEL_id
+		move.b	(a5),(a2)+				* Manufacturer id
+		move.b	2(a5),(a2)				* Device id
 		move.b	d7,$5555*2(a5)			* d7 = 0xAA
 		move.b	d6,$2AAA*2(a5)			* d6 = 0x55
 		move.b	#$F0,$5555*2(a5)		* Reset 29F/Cxxx FLASH chip
 		move.w	#Count_10ms,d1			* 10ms delay for Atmel devices
 Wait_10ms_for_ATMEL_reset:
 		nop
-		dbeq	d1,Wait_10ms_for_ATMEL_reset
+		dbra	d1,Wait_10ms_for_ATMEL_reset
 FLASH_id_return:
 		rts
 
@@ -1554,7 +1585,7 @@ FLASH_id_return:
 
 * ===========================================================================
 *
-* 	Data area used for storing various things ;-)
+* 	Data area used for storing various things
 *
 * ===========================================================================
 
@@ -1562,8 +1593,8 @@ CanRxBuffer:	ds.b	8				* 8 Bytes for CAN Receive messages
 *
 CanTxBuffer:	ds.b	8				* 8 Bytes for CAN Transmit messages
 *
-FLASH_Make:	dc.b	0
-FLASH_Type:	dc.b	0
+FLASH_Make:		dc.b	0
+FLASH_Type:		dc.b	0
 *
 FlashAddress:	dc.l	0
 FlashLength:	dc.b	0
