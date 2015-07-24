@@ -47,6 +47,19 @@
 * ===========================================================================
 * ===========================================================================
 *
+*	Version 1.3
+*	15-Dec-2013
+*
+*	BUG FIXES
+*	None
+*
+*	ADDITIONS
+*	Support for Atmel AT29C010A, AMIC 29010L, ST M29F010 and Microchip
+*	SST39SF010A replacement chips.
+*
+* ===========================================================================
+* ===========================================================================
+*
 *	Version 1.2
 *	18-Apr-2011
 *
@@ -296,7 +309,10 @@
 *	04 - failure, unrecognised Intel FLASH chips
 *	05 - failure, unrecognised AMD FLASH chips
 *	06 - failure, unrecognised CSI/Catalyst FLASH chips
-*	07 - Atmel 29C010/512 chips (which don't need to be erased)
+*	07 - failure, unrecognised Atmel FLASH chips
+*	08 - failure, unrecognised Microchip/SST FLASH chips
+*	09 - failure, unrecognised ST FLASH chips
+*	0A - failure, unrecognised AMIC FLASH chips
 * ---------------------------------------------------------------------------
 *	C2,00,00,00,00,00,00,00	- Exit the Bootloader and restart the T5 ECU
 *	replies with:
@@ -325,7 +341,7 @@
 *	Be careful using the C7 command, using 'bad' address values will make the
 *	T5 ECU restart!
 *	Values between 0x40005 and 0x7FFF are OK for T5.5
-*	Values between 0x60005 and 0x7FFF are OK for T5.5
+*	Values between 0x60005 and 0x7FFF are OK for T5.2
 * ---------------------------------------------------------------------------
 *	C8,00,00,00,00,00,00,00	- Calculate the Flash Checksum
 *	Replies with:
@@ -355,7 +371,7 @@
 *	0x1F - Atmel
 *
 *	tt = Device id. These can be:
-*	0xB8 - Intel _or_ CSI 28F512 (Fiited by Saab in T5.2)
+*	0xB8 - Intel _or_ CSI 28F512 (Fitted by Saab in T5.2)
 *	0xB4 - Intel _or_ CSI 28F010 (Fitted by Saab in T5.5)
 *	0x25 - AMD 28F512 (Fiited by Saab in T5.2)
 *	0xA7 - AMD 28F010 (Fitted by Saab in T5.5)
@@ -412,14 +428,21 @@ Intel_Make_Id		EQU	$89
 AMD_Make_Id			EQU	$01
 CSI_Make_Id			EQU	$31
 Atmel_Make_Id		EQU	$1F
-Intel_28F512_Id		EQU	$B8		* Also CSI
-Intel_28F010_Id		EQU	$B4		* Also CSI
+SST_Make_Id			EQU $BF
+ST_Make_Id			EQU	$20
+AMIC_Make_Id		EQU $37
+Intel_28F512_Id		EQU	$B8		* Same as CSI 28F512
+Intel_28F010_Id		EQU	$B4		* Same as CSI 28F010
 AMD_28F512_Id		EQU	$25
 AMD_28F010_Id		EQU	$A7
-AMD_29F010_Id		EQU	$20
+AMD_29F010_Id		EQU	$20		* Same as ST M29F010B
+CSI_28F010_Id		EQU	$B4		* Same as Intel 28F010
 Atmel_29C512_Id		EQU	$5D
 Atmel_29C010_Id		EQU	$D5
-Count_10ms			EQU	22000		* 22,001 loops x 0.48 = 10.56 ms
+SST_39SF010A_Id		EQU $B5
+ST_M29F010B_Id		EQU $20		* Same as AMD 29F010
+AMIC_A29010L_Id		EQU $A4
+Count_10ms			EQU	22000	* 22,001 loops x 0.48 = 10.56 ms
 Count_10us			EQU	21		* 22 loops x 0.48 = 10.56 us
 Count_6us			EQU	12		* 13 loops x 0.48 = 6.24 us
 
@@ -458,10 +481,16 @@ Synthesiser_Lock_Flag:
 		btst.b	#3,(a0)			* test VCO lock bit
 		beq.b	Synthesiser_Lock_Flag
 
-* Setup chip select modes
+* Remap FLASH to always start at addresss 0x40000 and occupy 256 kB
+
+		move.w #$0405,($FFFA48).l	* CSBARBT Start 0x40000, Blocksize =256 kB
+		move.w #$0405,($FFFA50).l	* CSBAR1 Start 0x40000, Blocksize =256 kB
+		move.w #$0405,($FFFA54).l	* CSBAR2 Start 0x40000, Blocksize =256 kB
 		
-		move.w	#$3030,($FFFA52).l * Synchronous mode selected,	Upper Byte to CSOR1
-		move.w	#$5030,($FFFA56).l * Synchronous mode selected,	Lower Byte to CSOR2
+* Setup chip select option registers to allow writing to FLASH
+
+		move.w	#$3030,($FFFA52).l * CSOR1 Synchronous mode, Upper Byte writable
+		move.w	#$5030,($FFFA56).l * CSOR2 Synchronous mode, Lower Byte writable
 
 * PORTQS latches I/O data. Writes drive	pins defined as outputs. Reads return
 * data present on the pins.
@@ -474,13 +503,10 @@ Synthesiser_Lock_Flag:
 		andi.w	#$8FDF,($FFFC16).l	* PQS Data Direction Register (DDRQS)
 		ori.w	#$50,($FFFC16).l	* PQS Data Direction Register (DDRQS)
 
-* Work out the first address of FLASH from the Chip-Select Register
-* This will be 0x40000 for T5.5 or 0x60000 for T5.2
+* Store the first address of FLASH from in the MC68332's a5 register
+* This is always 0x40000 for either a Trionic 5.5 or a Trionic 5.2 ECU
 		
-		move.w	($FFFA48).l,d0	* Chip-Select Base Address Register Boot ROM
-		andi.l	#$FFF8,d0
-		lsl.l	#8,d0
-		move.l	d0,a5				* FLASH_Start_Address held in a5 register
+		movea.l	#$40000,a5			* FLASH_Start_Address held in a5 register
 
 * Store the Watchdog address in a6 and reset values in d6 and d7 registers
 
@@ -515,7 +541,7 @@ Bootloader_Loop:
 		beq.w	C7_Command
 * ---------------------------------------------------------------------------
 		cmpi.b	#$7F,d0				* 0x00-0x7F upto 7 bytes of FLASH data
-		bls.w	Data_Command			* bls - less than or equal to 0x7F
+		bls.w	Data_Command		* bls - less than or equal to 0x7F
 * ---------------------------------------------------------------------------
 		cmpi.b	#$A5,d0				* A5 command - address and count of Bytes
 		beq.w	A5_Command
@@ -548,7 +574,6 @@ Send_CAN_Response:
 		jsr	(Send_A_CAN_Message).w
 		cmpi.b	#$C2,(CanTxBuffer).w		* CanTxBuffer0, $C2 - exit
 		bne.b	Bootloader_Loop				* Then return to start
-* ---------------------------------------------------------------------------
 		rts		* else,	we were	signalled to quit the main loop	by C2 command
 * ===========================================================================
 * =============== End of Bootloader_Loop ====================================
@@ -567,7 +592,7 @@ A5_Command:
 		move.l	d0,(FlashAddress).w		* Store a copy of the FLASH address
 		move.b	(a0),(FlashLength).w	* FLASH bytes to follow
 
-		clr.b	(a1)		* 0 - OK, CanTxBuffer1
+		clr.b	(a1)					* 0 - OK, CanTxBuffer1
 		bra.w	Send_CAN_Response
 * ===========================================================================
 
@@ -632,7 +657,7 @@ C2_Command:
 * ===========================================================================
 
 C3_Command:
-		clr.b	(a1)+				* 0 - OK, CanTxBuffer1
+		clr.b	(a1)+						* 0 - OK, CanTxBuffer1
 		move.l	#Last_Address_Of_T5,(a1)	* CanTxBuffer2-5
 		bra.w	Send_CAN_Response
 * ---------------------------------------------------------------------------
@@ -866,42 +891,68 @@ CAN_Send_Bytes_Loop:
 Erase_FLASH_Chips:
 		move.b	(FLASH_Make).w,d0
 		move.b	(FLASH_Type).w,d1
-		cmpi.b	#$89,d0					* Intel
+		cmpi.b	#Intel_Make_Id,d0		* Intel's Manufacturer Id
 		bne.b	Test_For_AMD
-		cmpi.b	#$B8,d1					* Intel 28F512
-		beq.b	Erase_28F512
-		cmpi.b	#$B4,d1					* Intel 28F010
-		beq.b	Erase_28F010
+		cmpi.b	#Intel_28F512_Id,d1		* Intel 28F512
+		beq.w	Erase_28F512
+		cmpi.b	#Intel_28F010_Id,d1		* Intel 28F010
+		beq.w	Erase_28F010
 		moveq	#4,d0					* 4 means unrecognised Intel FLASH
 		bra.w	Erase_Return
 * ---------------------------------------------------------------------------
 Test_For_AMD:
-		cmpi.b	#1,d0					* AMD
+		cmpi.b	#AMD_Make_Id,d0			* AMD's Manufacturer Id
 		bne.b	Test_For_CSI
-		cmpi.b	#$25,d1					* AMD 28F512
-		beq.b	Erase_28F512
-		cmpi.b	#$A7,d1					* AMD 28F010
-		beq.b	Erase_28F010
-		cmpi.b	#$20,d1					* check for AMD 29F010 Device id
+		cmpi.b	#AMD_28F512_Id,d1		* AMD 28F512
+		beq.w	Erase_28F512
+		cmpi.b	#AMD_28F010_Id,d1		* AMD 28F010
+		beq.w	Erase_28F010
+		cmpi.b	#AMD_29F010_Id,d1		* check for AMD 29F010 Device id
 		beq.w	Erase_AMD_29F			* CODE for erasing AMD 29F FLASH 
 		moveq	#5,d0					* 5 means unrecognised AMD FLASH
 		bra.w	Erase_Return
 * ---------------------------------------------------------------------------
 Test_For_CSI:
-		cmpi.b	#$31,d0					* CSI/Catalyst
+		cmpi.b	#CSI_Make_Id,d0			* CSI/Catalyst's Manufacturer Id
 		bne.b	Test_For_Atmel
-		cmpi.b	#$B4,d1					* CSI 28F010
-		beq.b	Erase_28F010
+		cmpi.b	#CSI_28F010_Id,d1		* CSI 28F010
+		beq.w	Erase_28F010
 		moveq	#6,d0					* 6 means unrecognised CSI FLASH
 		bra.w	Erase_Return
 * ---------------------------------------------------------------------------
 Test_For_Atmel:
-		cmpi.b	#$1F,d0					* Atmel
+		cmpi.b	#Atmel_Make_Id,d0		* Atmel's Manufacturer Id
+		bne.b	Test_For_SST
+		cmpi.b	#Atmel_29C010_Id,d1		* Atmel 29C010 Device id
+		beq.b	Erase_29C010
+		cmpi.b	#Atmel_29C512_Id,d1		* Atmel 29C512 Device id
+		beq.b	Erase_29C512
+		moveq	#7,d0					* 7 means unrecognised Atmel FLASH
+		bra.w	Erase_Return
+* ---------------------------------------------------------------------------
+Test_For_SST:
+		cmpi.b	#SST_Make_Id,d0			* SST's Manufacturer Id
+		bne.b	Test_For_ST
+		cmpi.b	#SST_39SF010A_Id,d1		* SST 39SF010A
+		beq.w	Erase_AMD_29F
+		moveq	#8,d0					* 8 means unrecognised SST FLASH
+		bra.w	Erase_Return
+* ---------------------------------------------------------------------------
+Test_For_ST:
+		cmpi.b	#ST_Make_Id,d0			* ST's Manufacturer Id
+		bne.b	Test_For_AMIC
+		cmpi.b	#ST_M29F010B_Id,d1		* ST M29F010B
+		beq.w	Erase_AMD_29F
+		moveq	#9,d0					* 9 means unrecognised ST FLASH
+		bra.w	Erase_Return
+* ---------------------------------------------------------------------------
+Test_For_AMIC:
+		cmpi.b	#AMIC_Make_Id,d0		* AMIC's Manufacturer Id
 		bne.b	Unknown_FLASH
-		cmpi.b	#$D5,d1					* Atmel 29C010 Device id
-		beq.b	Erase_Atmel
-		cmpi.b	#$5D,d1					* Atmel 29C512 Device id
-		beq.b	Erase_Atmel
+		cmpi.b	#AMIC_A29010L_Id,d1		* AMIC A29010L
+		beq.w	Erase_AMD_29F
+		moveq	#$A,d0					* $A means unrecognised AMIC FLASH
+		bra.w	Erase_Return
 * ---------------------------------------------------------------------------
 Unknown_FLASH:
 		moveq	#3,d0					* 3 means unrecognised FLASH
@@ -910,14 +961,54 @@ Unknown_FLASH:
 * ===========================================================================
 * =============== Erase_Atmel ===============================================
 * ===========================================================================
+*
+* Atmel 29Cxxx chips have an embedded erase algorithm which takes 20 ms
+* Erasure is checked by reading data to verify that all bytes are 0xFF
+* The erase process has failed if any byte is not 0xFF
 * 
-* Atmel 29C010 FLASH chips don't need to be erased, simply return
+*	d0 - used to store 0xFF to check that bytes are erased
+*	d1 - used for delay loop timer
+*	d2 - used to store/countdown the number of bytes to check are erased
+*	d6 - 0x5555 used for resetting the watchdog - also for Atmel 29C commands
+*	d7 - 0xAAAA used for resetting the watchdog - also for Atmel 29C commands
+*
+*	a5 - used for Flash_Start_Address (already there)
+*	a6 - Watchdog SWSR in SIM address
 *
 * ===========================================================================
 
+Erase_29C010:
+		move.l	#$40000,d2				* T5.5 FLASH size
+		bra.b	Erase_Atmel
+Erase_29C512:
+		move.l	#$20000,d2				* T5.2 FLASH size
 Erase_Atmel:
-		moveq	#7,d0					* 7 means Atmel
-		bra.w	Erase_Return			* Branch back to where Flash_Prog ends
+		move.w	d7,$5555*2(a5)			*
+		move.w	d6,$2AAA*2(a5)			*
+		move.w	#$8080,$5555*2(a5)		* 
+		move.w	d7,$5555*2(a5)			*
+		move.w	d6,$2AAA*2(a5)			*
+		move.w	#$1010,$5555*2(a5)		* erase FLASH sequence
+* ---------------------------------------------------------------------------
+* Wait 20ms (plus margin) for ATMEL erase algorithm to complete
+		move.w	#Count_10ms*2,d1
+Erase_29C_Delay:
+		nop
+		dbra	d1,Erase_29C_Delay
+* ---------------------------------------------------------------------------
+* Pre-load registers with values used in erase and programming sequences
+		st	d0			* FLASH is 0xFF when erased
+Erase_29C_Verify:
+* Reset_Software_Watchdoga6
+		move.w	d6,(a6)					* Write $5555 to SWSR in SIM
+		move.w	d7,(a6)					* Write $AAAA to SWSR in SIM
+		cmp.b	-1(a5,d2.l),d0		* Verify FLASH Address is FF (Erased)
+		bne.w	Erase_Failed			* FLASH chip has not been erased 
+* --------------- Byte is erased if here so move on to check next address ---
+		subq.l	#1,d2					* Point to the next address
+*						* Have all locations been checked ? d2=0x2/40000
+		bne.b	Erase_29C_Verify		* Check next if not all done
+		bra.w	Erase_OK				* Erase_OK :-)
 
 * ===========================================================================
 * =============== End of Erase_Atmel ========================================
@@ -960,6 +1051,7 @@ Erase_28F512:
 
 Flash_Fill_With_Zero:
 		move.l	d2,d0				* Store a copy of FLASH size for erasing
+* Pre-load registers with values used in erase and programming sequences
 		move.b	#$40,d3				* FLASH program command
 		move.b	#$C0,d4				* FLASH verify command
 		move.w	#$FFFF,(a5)			* Reset FLASH chips
@@ -1017,7 +1109,7 @@ Zeroing_Done:
 *	d0 - used to store a copy of the number of bytes to program to zero
 *		 also used to store 0xFF to check that bytes are erased
 *	d1 - used for delay loop counters, also used for dummy FLASH read
-*	d2 - used to store/countdown the number of bytes to program to zero
+*	d2 - used to store/countdown the number of bytes to check are erased
 *	d3 - used for 28F FLASH erase command - 0x20
 *	d4 - used for 28F FLASH verify command - 0xA0
 *	d5 - used for programming retry counter
@@ -1031,6 +1123,7 @@ Zeroing_Done:
 
 Erase_28F_FLASH:
 		move.l	d0,d2			* Recall the copy of FLASH size for erasing
+* Pre-load registers with values used in erase and programming sequences
 		st		d0					* FLASH is 0xFF when erased
 		move.b	#$20,d3				* FLASH erase command
 		move.b	#$A0,d4				* FLASH erase verify command
@@ -1194,25 +1287,103 @@ Flash_Programming:
 		clr.l	d2
 		move.b	4(a3),d2				* Get number of bytes to program
 		move.b	(FLASH_Type).w,d1
-		cmpi.b	#$20,d1					* AMD 29F010 Device id
+		cmpi.b	#AMD_29F010_Id,d1		* AMD AND ST 29F010 Device id
 		beq.w	Flash_29F
-		cmpi.b	#$D5,d1					* Atmel 29C010 Device id
+		cmpi.b	#Atmel_29C010_Id,d1		* Atmel 29C010 Device id
 		beq.b	Flash_29C
-		cmpi.b	#$5D,d1					* Atmel 29C512 Device id
+		cmpi.b	#Atmel_29C512_Id,d1		* Atmel 29C512 Device id
 		beq.b	Flash_29C
-		bra.b	Flash_28F				* Assume that they are 28F512/010
+		cmpi.b	#SST_39SF010A_Id,d1		* SST 39SF010A
+		beq.w	Flash_29F
+		cmpi.b	#ST_M29F010B_Id,d1		* ST M29F010B
+		beq.w	Flash_29F
+		cmpi.b	#AMIC_A29010L_Id,d1		* AMIC A29010L
+		beq.w	Flash_29F
+		bra.w	Flash_28F				* Assume that they are 28F512/010
 
-		
+
 * ===========================================================================
 * =============== Program Atmel 29C010 FLASH chip types =====================
 * ===========================================================================
 *
-* dummy 'placeholder' code for Atmel - always 'fails'
+* ---------------------------------------------------------------------------
+* CAUTION! The controlling FLASHer program must take care not to send
+* blocks of data that cross Atmel's FLASH 'page' boundaries
+* ---------------------------------------------------------------------------
+*
+* Atmel 29Cxxx chips have an embedded program algorithm which programs a
+* 'page' or 'sector' of FLASH. It takes 10 ms to program a each page.
+*
+* Blocks of data will always be smaller than a FLASH page
+* A complete FLASH page is copied to a temporary buffer (AtmelBuffer)
+* The data block (FlashBuffer) is merged with and overwrites part of the buffer
+* with new values.
+* The entire, modified, AtmelBuffer is written back to the FLASH page
+*
+* Programming is checked by reading data to verify that it matches
+* The erase process has failed if any byte doesn't match
+* 
+*	d0 - used for the offset of the start of a data block in a FLASH page
+*	d1 - used to count bytes when moving a FLASH page and a delay loop timer
+*	d2 - used to store/countdown the number of bytes to program
+*	d3 - used as temporary store when verifying that data has been programmed
+*	d6 - 0x5555 used for resetting the watchdog - also for Atmel 29C commands
+*	d7 - 0xAAAA used for resetting the watchdog - also for Atmel 29C commands
+*
+*	a2 - is the address of the Atmel Page Buffer
+*	a3 - is the address of the FLASH_Write_Buffer
+*	a4 - is the first FLASH address to program (add to d2)
+*	a5 - used for Flash_Start_Address (already there)
+*		 either 0x40000 for T5.5 or 0x60000 for T5.2
+*	a6 - Watchdog SWSR in SIM address
 *
 * ===========================================================================
 	
 Flash_29C:
-		bra.w	Programming_Error	* Branch back to where Flash_Prog fails
+		move.l	a4,d0				* Calculate offset into 256 Byte sector
+		andi.l	#$00FF,d0
+		suba.l	d0,a4				* Align to the nearest 256 Byte sector
+		movea.l	#AtmelBuffer,a2		* Start of Atmel Buffer
+		move.l	#$0100,d1
+Init_AtmelBuffer:
+		move.w	-2(a4,d1.l),-2(a2,d1.l)	* Copy a page of FLASH to buffer
+		subq.l	#2,d1
+		bne.b	Init_AtmelBuffer
+* ---------------------------------------------------------------------------
+		adda.l	d0,a2				* Point a2 to offset in AtmelBuffer
+		move.l	d2,d1				* Number of bytes to FLASH
+Merge_FlashBuffer:
+		move.b	4(a3,d1.l),-1(a2,d1.l)	* Copy a FlashBuffer into AtmelBuffer
+		subq.l	#1,d1
+		bne.b	Merge_FlashBuffer
+* ---------------------------------------------------------------------------
+		suba.l	d0,a2				* Point a2 back to start of AtmelBuffer
+* ---------------------------------------------------------------------------
+Flash_29C_Sector:
+		move.w	d7,$5555*2(a5)		* Program FLASH sequence
+		move.w	d6,$2AAA*2(a5)		*
+		move.w	#$A0A0,$5555*2(a5)	* Program FLASH Command
+		move.w	#$0100,d1
+Flash_29C_Another:
+		move.w	-2(a2,d1.l),-2(a4,d1.l)	* Copy AtmelBuffer to FLASH
+		subq.l	#2,d1
+		bne.b	Flash_29C_Another
+* ---------------------------------------------------------------------------
+ 		move.w	#Count_10ms,d1		* 10ms delay for Atmel devices
+Wait_10ms_for_ATMEL_write:
+		nop
+		dbra	d1,Wait_10ms_for_ATMEL_write		
+* ---------------------------------------------------------------------------
+* Verify the sector just programmed
+Verify_29C_Sector:
+		move.w	#$0100,d1			* Get number of bytes to compare
+Verify_29C_Another:
+		move.w	-2(a2,d1.l),d3		* get a word to verify
+		cmp.w	-2(a4,d1.l),d3		* Compare FLASH with Buffer
+		bne.w	Programming_Error	* Branch to where Flash_Prog fails
+		subq.l	#2,d1
+		bne.b	Verify_29C_Another	* OK so check another one
+		bra.w	Programming_OK		* All Checked and OK
 
 * ===========================================================================
 * =============== End of Program Atmel 29C010 FLASH chip types ==============
@@ -1246,6 +1417,7 @@ Flash_29C:
 * ===========================================================================
 
 Flash_28F:
+* Pre-load registers with values used in erase and programming sequences
 		move.b	#$40,d3					* FLASH program command
 		move.b	#$C0,d4					* FLASH verify command
 Flash_28F_Another:
@@ -1310,6 +1482,7 @@ Programming_Done:
 *============================================================================
 
 Flash_29F:
+* Pre-load registers with values used in erase and programming sequences
 		move.b	#$A0,d1					* Program FLASH Command
 		move.l	a4,d0					* work out if chip 1 or 2...
 		add.l	d2,d0					* ...by adding address and byte count
@@ -1331,7 +1504,7 @@ Flash_29F_Verify:
 		cmp.b	d3,d4					* Test to see if Bit 7 matches
 		beq.b	Flash_29F_OK
 		btst	#5,d5					* Test to see if timeout
-		beq.b	Flash_29F_Verify		* Not timed out so check again
+		beq.b	Flash_29F_Verify		* N* Reset_Software_Watchdogot timed out so check again
 		move.b	-1(a4,d2.l),d4			* Read back from FLASH
 		and.b	#$80,d4
 		cmp.b	d3,d4					* Test to see if Bit 7 matches
@@ -1559,6 +1732,11 @@ Wait_For_FLASH_Power:
 * ===========================================================================
 * 		Code for 29F/Cxxx FLASH starts here
 * ===========================================================================
+		move.w	#Count_10ms*2,d1		* 20ms delay needed by Atmel devices
+* because the 28Fxxx Id sequence triggers their internal timers
+Wait_20ms_for_ATMEL_sdp:
+		nop
+		dbra	d1,Wait_20ms_for_ATMEL_sdp
 		move.b	d7,$5555*2(a5)			* d7 = 0xAA
 		move.b	d6,$2AAA*2(a5)			* d6 = 0x55
 		move.b	#$90,$5555*2(a5)		* get FLASH id
@@ -1599,7 +1777,8 @@ FLASH_Type:		dc.b	0
 FlashAddress:	dc.l	0
 FlashLength:	dc.b	0
 FlashBuffer:	ds.b	128				* 128 Bytes for FLASH Buffer
-
+		EVEN
+AtmelBuffer:	ds.b	512				* 512 Byte buffer for FLASHing Atmel
 * ===========================================================================
 
 		END My_Booty
