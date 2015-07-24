@@ -1,0 +1,15 @@
+# Executables
+*.exe 
+*.EXE 
+# Symbol files
+*.sym 
+*.SYM 
+# Listing files
+*.lst
+*.LST 
+# S-Record files
+*.s19
+*.S19 
+# Zip files
+*.zip
+*.ZIP

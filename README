@@ -1,0 +1,34 @@
+MyBooty - a bootloader for Saab Trionic 5.2 and 5.5 ECUs by Sophie Dexter
+-------------------------------------------------------------------------
+
+###########################################################################
+WARNING: Use at your own risk, sadly this software comes with no guarantees
+This software is provided 'free' and in good faith, but the author does not
+accept liability for any damage arising from its use.
+###########################################################################
+
+More notes and a changelog are included in the source file MyBooty.asm
+
+Use Mybooty.cmd or MyBooty,bat to 'build' an S-Record file for embedding
+into T5CANLib.DLL, part of the T5Suite2 and T5CANFlasher2 applications.
+
+Required software to build MyBooty
+----------------------------------
+
+Scott Howard's DOS based freeware CPU32 assembler available from Freescale:
+http://www.freescale.com/webapp/sps/site/prod_summary.jsp?code=MC68332&fpsp=1&tab=Design_Tools_Tab
+Direct download link;
+http://cache.freescale.com/files/microcontrollers/software_tools/assemblers/AS32V1-2ASM.zip?fasp=1&WT_TYPE=Standalone%20Compilers%20and%20Build%20Tools&WT_VENDOR=FREESCALE&WT_FILE_FORMAT=zip&WT_ASSET=Downloads&fileExt=.zip
+
+Ant Goffart's S-Record tools available from:
+http://www.s-record.com/
+
+Git Repo at GitHub for the T5Suite2 and T5CANFlasher2 Apps:
+https://github.com/Just4pLeisure/T5SuiteII
+
+Official Home of the Trionic Suites
+http://www.txsuite.org/
+
+Support forums
+http://www.trionictuning.com
+http://forum.ecuproject.com
